@@ -6,191 +6,27 @@ const RING_COUNT = 24;
 const dpr = Math.min(window.devicePixelRatio || 1, 2);
 let c, rafID, input, resizeTimer, layout;
 
-function justifyLine(words, cols, isLast) {
-  if (words.length === 1 || isLast) return words.join(" ").padEnd(cols, " ");
-  const letters = words.reduce((n, w) => n + w.length, 0);
-  const gaps = words.length - 1;
-  const totalSpaces = Math.max(gaps, cols - letters);
-  const base = Math.floor(totalSpaces / gaps);
-  let extra = totalSpaces % gaps;
-  let out = "";
-  words.forEach((word, i) => {
-    out += word;
-    if (i < gaps) out += " ".repeat(base + (extra-- > 0 ? 1 : 0));
-  });
-  return out.slice(0, cols).padEnd(cols, " ");
+function justifyLine(words, cols, isLast) { if (words.length === 1 || isLast) return words.join(" ").padEnd(cols, " "); const letters = words.reduce((n,w)=>n+w.length,0), gaps=words.length-1, totalSpaces=Math.max(gaps,cols-letters), base=Math.floor(totalSpaces/gaps); let extra=totalSpaces%gaps,out=""; words.forEach((word,i)=>{out+=word;if(i<gaps)out+=" ".repeat(base+(extra-->0?1:0));}); return out.slice(0,cols).padEnd(cols," "); }
+function wrapAndJustify(text, cols) { const words=text.trim().split(/\s+/),rows=[]; let line=[],len=0; for(const word of words){const next=len+(line.length?1:0)+word.length;if(next>cols&&line.length){rows.push(line);line=[word];len=word.length;}else{line.push(word);len=next;}} if(line.length)rows.push(line); return rows.map((row,i)=>justifyLine(row,cols,i===rows.length-1)); }
+function computeLayout(){const vw=window.innerWidth,vh=window.innerHeight,cols=vw<600?30:vw<900?40:52,lines=wrapAndJustify(MESSAGE,cols),width=Math.min(vw*.67,850),anchorTop=vw<700?95:130,hangerLength=vw<700?42:58,bottomGap=vw<700?50:65,textTop=anchorTop+hangerLength,maxHeight=Math.max(340,vh-textTop-bottomGap),height=Math.min(maxHeight,Math.max(520,lines.length*28)),cellHeight=height/Math.max(1,lines.length-1),firstRowGap=cellHeight*.58;return{cols,rows:lines.length,lines,width,height,anchorTop,hangerLength,textTop,firstRowGap,cellWidth:width/Math.max(1,cols-1),cellHeight};}
+const CONFIG={gravity:.17,damping:.995,iterationsPerFrame:5,compressFactor:.03,stretchFactor:1.18,mouseSize:12000,mouseStrength:7};
+function sizeCanvas(){c.style.width=window.innerWidth+"px";c.style.height=window.innerHeight+"px";c.width=Math.round(window.innerWidth*dpr);c.height=Math.round(window.innerHeight*dpr);}
+function makeGlyphAtlas(fontSize){const atlas={},chars=new Set(MESSAGE),box=Math.ceil(fontSize*2.4);for(const ch of chars){if(ch===" ")continue;const off=document.createElement("canvas");off.width=off.height=Math.ceil(box*dpr);const ctx=off.getContext("2d");ctx.scale(dpr,dpr);ctx.font=`italic 600 ${fontSize}px "Cormorant Garamond", Georgia, serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillStyle="#f0c85b";ctx.shadowColor="rgba(255, 198, 70, 0.72)";ctx.shadowBlur=5;ctx.fillText(ch,box/2,box/2);off.logicalSize=box;atlas[ch]=off;}return atlas;}
+
+function main(){
+ if(rafID)cancelAnimationFrame(rafID);if(input)input.unbind();layout=computeLayout();c=document.createElement("canvas");container.innerHTML="";container.appendChild(c);sizeCanvas();
+ const ctx=c.getContext("2d"),particles=[],constraints=[],hangers=[];const fontSize=Math.max(13,Math.min(22,layout.cellHeight*.75,layout.cellWidth*1.42)),glyphs=makeGlyphAtlas(fontSize);
+ for(let i=0;i<layout.cols;i++)for(let j=0;j<layout.rows;j++){const y=j===0?layout.hangerLength:layout.hangerLength+layout.firstRowGap+(j-1)*layout.cellHeight;particles.push(new Particle({x:i*layout.cellWidth,y,pinned:false,char:layout.lines[j]?.[i]||" "}));}
+ for(let i=0;i<layout.cols;i++)for(let j=0;j<layout.rows;j++){const p=particles[getPointID(j,i,layout.rows)];if(j<layout.rows-1){const down=particles[getPointID(j+1,i,layout.rows)],verticalLength=j===0?layout.firstRowGap:layout.cellHeight,vc=new Constraint(p,down,verticalLength,CONFIG.compressFactor,CONFIG.stretchFactor);constraints.push(vc);p.downConstraint=vc;}if(i<layout.cols-1)constraints.push(new Constraint(p,particles[getPointID(j,i+1,layout.rows)],layout.cellWidth,.72,3.2));}
+ for(let r=0;r<RING_COUNT;r++){const x=(r/(RING_COUNT-1))*layout.width,col=Math.round((r/(RING_COUNT-1))*(layout.cols-1)),topParticle=particles[getPointID(0,col,layout.rows)],anchor=new Particle({x,y:0,pinned:true,char:""}),hanger=new Constraint(anchor,topParticle,layout.hangerLength,.92,1.12);constraints.push(hanger);hangers.push({anchor,particle:topParticle});}
+ input=new Input(c,particles);
+ function updateRings(){for(const h of hangers){const targetX=Math.max(0,Math.min(layout.width,h.particle.pos.x));const nextX=h.anchor.pos.x+(targetX-h.anchor.pos.x)*.16;h.anchor.oldPos.reset(h.anchor.pos.x,0);h.anchor.pos.reset(nextX,0);}}
+ function drawHangers(offsetX,offsetY){ctx.save();ctx.setTransform(dpr,0,0,dpr,dpr*offsetX,dpr*offsetY);ctx.lineWidth=1.7;ctx.strokeStyle="#d99a32";ctx.fillStyle="#d99a32";ctx.shadowColor="rgba(238,166,47,.45)";ctx.shadowBlur=4;for(const h of hangers){const lean=Math.max(-.45,Math.min(.45,(h.particle.pos.x-h.anchor.pos.x)/layout.hangerLength));ctx.save();ctx.translate(h.anchor.pos.x,h.anchor.pos.y);ctx.rotate(lean);ctx.beginPath();ctx.ellipse(0,0,5.3,9.2,0,0,Math.PI*2);ctx.stroke();ctx.restore();ctx.beginPath();ctx.moveTo(h.anchor.pos.x,h.anchor.pos.y+7);ctx.lineTo(h.particle.pos.x,h.particle.pos.y-4);ctx.stroke();ctx.beginPath();ctx.arc(h.particle.pos.x,h.particle.pos.y-3,2.4,0,Math.PI*2);ctx.fill();}ctx.restore();}
+ function draw(){const offsetX=(c.width/dpr-layout.width)/2,offsetY=layout.anchorTop;drawHangers(offsetX,offsetY);for(const p of particles){if(!p.char||p.char===" ")continue;const img=glyphs[p.char];if(!img)continue;let cos=1,sin=0;if(p.downConstraint){const dx=p.downConstraint.p2.pos.x-p.downConstraint.p1.pos.x,dy=p.downConstraint.p2.pos.y-p.downConstraint.p1.pos.y,a=Math.atan2(dy,dx)-Math.PI/2;cos=Math.cos(a);sin=Math.sin(a);}ctx.setTransform(dpr*cos,dpr*sin,-dpr*sin,dpr*cos,dpr*(p.pos.x+offsetX),dpr*(p.pos.y+offsetY));const half=img.logicalSize/2;ctx.globalAlpha=.98;ctx.drawImage(img,-half,-half,img.logicalSize,img.logicalSize);}ctx.globalAlpha=1;ctx.setTransform(1,0,0,1,0,0);}
+ let last=0;function loop(now){rafID=requestAnimationFrame(loop);ctx.clearRect(0,0,c.width,c.height);const dt=last?Math.min(now-last,32):16;last=now;particles.forEach(p=>p.update(dt));updateRings();for(let k=0;k<CONFIG.iterationsPerFrame;k++)constraints.forEach(con=>con.solve());draw();}rafID=requestAnimationFrame(loop);
 }
-
-function wrapAndJustify(text, cols) {
-  const words = text.trim().split(/\s+/);
-  const rows = [];
-  let line = [], len = 0;
-  for (const word of words) {
-    const next = len + (line.length ? 1 : 0) + word.length;
-    if (next > cols && line.length) {
-      rows.push(line); line = [word]; len = word.length;
-    } else { line.push(word); len = next; }
-  }
-  if (line.length) rows.push(line);
-  return rows.map((row, i) => justifyLine(row, cols, i === rows.length - 1));
-}
-
-function computeLayout() {
-  const vw = window.innerWidth, vh = window.innerHeight;
-  const cols = vw < 600 ? 30 : vw < 900 ? 40 : 52;
-  const lines = wrapAndJustify(MESSAGE, cols);
-  const width = Math.min(vw * 0.67, 850);
-  const anchorTop = vw < 700 ? 95 : 130;
-  const hangerLength = vw < 700 ? 42 : 58;
-  const bottomGap = vw < 700 ? 50 : 65;
-  const textTop = anchorTop + hangerLength;
-  const maxHeight = Math.max(340, vh - textTop - bottomGap);
-  const height = Math.min(maxHeight, Math.max(520, lines.length * 28));
-  const cellHeight = height / Math.max(1, lines.length - 1);
-  const firstRowGap = cellHeight * 0.58;
-  return { cols, rows: lines.length, lines, width, height, anchorTop, hangerLength, textTop, firstRowGap, cellWidth: width / Math.max(1, cols - 1), cellHeight };
-}
-
-const CONFIG = {
-  gravity: 0.17,
-  damping: 0.995,
-  iterationsPerFrame: 5,
-  compressFactor: 0.03,
-  stretchFactor: 1.18,
-  mouseSize: 12000,
-  mouseStrength: 7
-};
-
-function sizeCanvas() {
-  c.style.width = window.innerWidth + "px";
-  c.style.height = window.innerHeight + "px";
-  c.width = Math.round(window.innerWidth * dpr);
-  c.height = Math.round(window.innerHeight * dpr);
-}
-
-function makeGlyphAtlas(fontSize) {
-  const atlas = {}, chars = new Set(MESSAGE), box = Math.ceil(fontSize * 2.4);
-  for (const ch of chars) {
-    if (ch === " ") continue;
-    const off = document.createElement("canvas");
-    off.width = off.height = Math.ceil(box * dpr);
-    const ctx = off.getContext("2d");
-    ctx.scale(dpr, dpr);
-    ctx.font = `italic 600 ${fontSize}px "Cormorant Garamond", Georgia, serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillStyle = "#f0c85b";
-    ctx.shadowColor = "rgba(255, 198, 70, 0.72)";
-    ctx.shadowBlur = 5;
-    ctx.fillText(ch, box / 2, box / 2);
-    off.logicalSize = box;
-    atlas[ch] = off;
-  }
-  return atlas;
-}
-
-function main() {
-  if (rafID) cancelAnimationFrame(rafID);
-  if (input) input.unbind();
-  layout = computeLayout();
-  c = document.createElement("canvas");
-  container.innerHTML = "";
-  container.appendChild(c);
-  sizeCanvas();
-  const ctx = c.getContext("2d"), particles = [], constraints = [], hangers = [];
-  const fontSize = Math.max(13, Math.min(22, layout.cellHeight * 0.75, layout.cellWidth * 1.42));
-  const glyphs = makeGlyphAtlas(fontSize);
-
-  for (let i = 0; i < layout.cols; i++) {
-    for (let j = 0; j < layout.rows; j++) {
-      const y = j === 0 ? layout.hangerLength : layout.hangerLength + layout.firstRowGap + (j - 1) * layout.cellHeight;
-      particles.push(new Particle({ x: i * layout.cellWidth, y, pinned: false, char: layout.lines[j]?.[i] || " " }));
-    }
-  }
-
-  for (let i = 0; i < layout.cols; i++) {
-    for (let j = 0; j < layout.rows; j++) {
-      const p = particles[getPointID(j, i, layout.rows)];
-      if (j < layout.rows - 1) {
-        const down = particles[getPointID(j + 1, i, layout.rows)];
-        const verticalLength = j === 0 ? layout.firstRowGap : layout.cellHeight;
-        const vc = new Constraint(p, down, verticalLength, CONFIG.compressFactor, CONFIG.stretchFactor);
-        constraints.push(vc); p.downConstraint = vc;
-      }
-      if (i < layout.cols - 1) constraints.push(new Constraint(p, particles[getPointID(j, i + 1, layout.rows)], layout.cellWidth, 0.72, 3.2));
-    }
-  }
-
-  for (let r = 0; r < RING_COUNT; r++) {
-    const x = (r / (RING_COUNT - 1)) * layout.width;
-    const col = Math.round((r / (RING_COUNT - 1)) * (layout.cols - 1));
-    const topParticle = particles[getPointID(0, col, layout.rows)];
-    const anchor = new Particle({ x, y: 0, pinned: true, char: "" });
-    const hanger = new Constraint(anchor, topParticle, layout.hangerLength, 0.92, 1.12);
-    constraints.push(hanger); hangers.push({ anchor, particle: topParticle });
-  }
-
-  input = new Input(c, particles);
-
-  function drawHangers(offsetX, offsetY) {
-    ctx.save(); ctx.setTransform(dpr, 0, 0, dpr, dpr * offsetX, dpr * offsetY);
-    ctx.lineWidth = 1.7; ctx.strokeStyle = "#d99a32"; ctx.shadowColor = "rgba(238,166,47,.45)"; ctx.shadowBlur = 4;
-    for (const h of hangers) {
-      ctx.beginPath(); ctx.moveTo(h.anchor.pos.x, h.anchor.pos.y); ctx.lineTo(h.particle.pos.x, h.particle.pos.y - 4); ctx.stroke();
-      ctx.beginPath(); ctx.arc(h.particle.pos.x, h.particle.pos.y - 3, 2.4, 0, Math.PI * 2); ctx.fillStyle = "#d99a32"; ctx.fill();
-    }
-    ctx.restore();
-  }
-
-  function draw() {
-    const offsetX = (c.width / dpr - layout.width) / 2, offsetY = layout.anchorTop;
-    drawHangers(offsetX, offsetY);
-    for (const p of particles) {
-      if (!p.char || p.char === " ") continue;
-      const img = glyphs[p.char]; if (!img) continue;
-      let cos = 1, sin = 0;
-      if (p.downConstraint) {
-        const dx = p.downConstraint.p2.pos.x - p.downConstraint.p1.pos.x, dy = p.downConstraint.p2.pos.y - p.downConstraint.p1.pos.y;
-        const a = Math.atan2(dy, dx) - Math.PI / 2; cos = Math.cos(a); sin = Math.sin(a);
-      }
-      ctx.setTransform(dpr * cos, dpr * sin, -dpr * sin, dpr * cos, dpr * (p.pos.x + offsetX), dpr * (p.pos.y + offsetY));
-      const half = img.logicalSize / 2; ctx.globalAlpha = 0.98; ctx.drawImage(img, -half, -half, img.logicalSize, img.logicalSize);
-    }
-    ctx.globalAlpha = 1; ctx.setTransform(1, 0, 0, 1, 0, 0);
-  }
-
-  let last = 0;
-  function loop(now) {
-    rafID = requestAnimationFrame(loop); ctx.clearRect(0, 0, c.width, c.height);
-    const dt = last ? Math.min(now - last, 32) : 16; last = now;
-    particles.forEach(p => p.update(dt));
-    for (let k = 0; k < CONFIG.iterationsPerFrame; k++) constraints.forEach(con => con.solve());
-    draw();
-  }
-  rafID = requestAnimationFrame(loop);
-}
-
-class Input {
-  constructor(canvas, particles) { this.c = canvas; this.particles = particles; this.mouse = new Vec2(); this.radius = Math.max(26, layout.cellWidth * 1.8); this.bind(); }
-  setMouse(e) { const rect = this.c.getBoundingClientRect(), ox = (this.c.width / dpr - layout.width) / 2, oy = layout.anchorTop; this.mouse.x = e.clientX - rect.left - ox; this.mouse.y = e.clientY - rect.top - oy; }
-  down(e) { this.setMouse(e); for (const p of this.particles) if (this.mouse.subtractNew(p.pos).length < this.radius) { this.grabbed = p; p.wasPinned = p.pinned; p.pinned = true; break; } }
-  move(e) {
-    this.setMouse(e);
-    if (this.grabbed) { this.grabbed.pos.reset(this.mouse.x, this.mouse.y); this.grabbed.oldPos.reset(this.mouse.x, this.mouse.y); }
-    for (const p of this.particles) {
-      const diff = this.mouse.subtractNew(p.pos), ls = diff.lengthSquared;
-      if (ls < CONFIG.mouseSize) { const a = diff.angle - Math.PI, strength = smoothstep(CONFIG.mouseSize, -2000, ls) * CONFIG.mouseStrength / 300; p.applyForce(new Vec2(Math.cos(a) * strength, Math.sin(a) * strength)); }
-    }
-  }
-  up() { if (this.grabbed) { this.grabbed.pinned = this.grabbed.wasPinned; this.grabbed = null; } }
-  context(e) { e.preventDefault(); }
-  bind() { this.down = this.down.bind(this); this.move = this.move.bind(this); this.up = this.up.bind(this); this.context = this.context.bind(this); document.addEventListener("pointerdown", this.down); document.addEventListener("pointermove", this.move); document.addEventListener("pointerup", this.up); document.addEventListener("contextmenu", this.context); }
-  unbind() { document.removeEventListener("pointerdown", this.down); document.removeEventListener("pointermove", this.move); document.removeEventListener("pointerup", this.up); document.removeEventListener("contextmenu", this.context); }
-}
-
-class Vec2 { constructor(x = 0, y = 0) { this.reset(x, y); } reset(x = 0, y = 0) { this.x = x; this.y = y; return this; } zero() { return this.reset(0, 0); } clone() { return new Vec2(this.x, this.y); } add(v) { this.x += v.x; this.y += v.y; return this; } subtract(v) { this.x -= v.x; this.y -= v.y; return this; } subtractNew(v) { return this.clone().subtract(v); } get lengthSquared() { return this.x * this.x + this.y * this.y; } get length() { return Math.hypot(this.x, this.y); } get angle() { return Math.atan2(this.y, this.x); } }
-class Particle { constructor({ x, y, pinned, char }) { this.pos = new Vec2(x, y); this.oldPos = new Vec2(x, y); this.acc = new Vec2(); this.pinned = pinned; this.char = char; this.downConstraint = null; } applyForce(v) { this.acc.add(v); } update(delta) { if (this.pinned) { this.acc.zero(); return; } const vx = (this.pos.x - this.oldPos.x) * CONFIG.damping, vy = (this.pos.y - this.oldPos.y) * CONFIG.damping; this.oldPos.reset(this.pos.x, this.pos.y); const dd = Math.max(1, delta * delta); this.applyForce(new Vec2(0, CONFIG.gravity / dd)); this.pos.x += vx + this.acc.x * dd; this.pos.y += vy + this.acc.y * dd; this.acc.zero(); } }
-class Constraint { constructor(p1, p2, length, compressFactor, stretchFactor) { this.p1 = p1; this.p2 = p2; this.length = length; this.min = length * compressFactor; this.max = length * stretchFactor; } solve() { const dx = this.p2.pos.x - this.p1.pos.x, dy = this.p2.pos.y - this.p1.pos.y, dist = Math.hypot(dx, dy); if (!dist) return; let target = this.length; if (dist < this.min) target = this.min; else if (dist > this.max) target = this.max; else return; const percent = (target - dist) / dist / 2, ox = dx * percent, oy = dy * percent; if (!this.p1.pinned) { this.p1.pos.x -= ox; this.p1.pos.y -= oy; } if (!this.p2.pinned) { this.p2.pos.x += ox; this.p2.pos.y += oy; } } }
-
-window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(main, 150); });
-setTimeout(main, 300);
+class Input{constructor(canvas,particles){this.c=canvas;this.particles=particles;this.mouse=new Vec2();this.radius=Math.max(26,layout.cellWidth*1.8);this.bind();}setMouse(e){const rect=this.c.getBoundingClientRect(),ox=(this.c.width/dpr-layout.width)/2,oy=layout.anchorTop;this.mouse.x=e.clientX-rect.left-ox;this.mouse.y=e.clientY-rect.top-oy;}down(e){this.setMouse(e);for(const p of this.particles)if(this.mouse.subtractNew(p.pos).length<this.radius){this.grabbed=p;p.wasPinned=p.pinned;p.pinned=true;break;}}move(e){this.setMouse(e);if(this.grabbed){this.grabbed.pos.reset(this.mouse.x,this.mouse.y);this.grabbed.oldPos.reset(this.mouse.x,this.mouse.y);}for(const p of this.particles){const diff=this.mouse.subtractNew(p.pos),ls=diff.lengthSquared;if(ls<CONFIG.mouseSize){const a=diff.angle-Math.PI,strength=smoothstep(CONFIG.mouseSize,-2000,ls)*CONFIG.mouseStrength/300;p.applyForce(new Vec2(Math.cos(a)*strength,Math.sin(a)*strength));}}}up(){if(this.grabbed){this.grabbed.pinned=this.grabbed.wasPinned;this.grabbed=null;}}context(e){e.preventDefault();}bind(){this.down=this.down.bind(this);this.move=this.move.bind(this);this.up=this.up.bind(this);this.context=this.context.bind(this);document.addEventListener("pointerdown",this.down);document.addEventListener("pointermove",this.move);document.addEventListener("pointerup",this.up);document.addEventListener("contextmenu",this.context);}unbind(){document.removeEventListener("pointerdown",this.down);document.removeEventListener("pointermove",this.move);document.removeEventListener("pointerup",this.up);document.removeEventListener("contextmenu",this.context);}}
+class Vec2{constructor(x=0,y=0){this.reset(x,y);}reset(x=0,y=0){this.x=x;this.y=y;return this;}zero(){return this.reset(0,0);}clone(){return new Vec2(this.x,this.y);}add(v){this.x+=v.x;this.y+=v.y;return this;}subtract(v){this.x-=v.x;this.y-=v.y;return this;}subtractNew(v){return this.clone().subtract(v);}get lengthSquared(){return this.x*this.x+this.y*this.y;}get length(){return Math.hypot(this.x,this.y);}get angle(){return Math.atan2(this.y,this.x);}}
+class Particle{constructor({x,y,pinned,char}){this.pos=new Vec2(x,y);this.oldPos=new Vec2(x,y);this.acc=new Vec2();this.pinned=pinned;this.char=char;this.downConstraint=null;}applyForce(v){this.acc.add(v);}update(delta){if(this.pinned){this.acc.zero();return;}const vx=(this.pos.x-this.oldPos.x)*CONFIG.damping,vy=(this.pos.y-this.oldPos.y)*CONFIG.damping;this.oldPos.reset(this.pos.x,this.pos.y);const dd=Math.max(1,delta*delta);this.applyForce(new Vec2(0,CONFIG.gravity/dd));this.pos.x+=vx+this.acc.x*dd;this.pos.y+=vy+this.acc.y*dd;this.acc.zero();}}
+class Constraint{constructor(p1,p2,length,compressFactor,stretchFactor){this.p1=p1;this.p2=p2;this.length=length;this.min=length*compressFactor;this.max=length*stretchFactor;}solve(){const dx=this.p2.pos.x-this.p1.pos.x,dy=this.p2.pos.y-this.p1.pos.y,dist=Math.hypot(dx,dy);if(!dist)return;let target=this.length;if(dist<this.min)target=this.min;else if(dist>this.max)target=this.max;else return;const percent=(target-dist)/dist/2,ox=dx*percent,oy=dy*percent;if(!this.p1.pinned){this.p1.pos.x-=ox;this.p1.pos.y-=oy;}if(!this.p2.pinned){this.p2.pos.x+=ox;this.p2.pos.y+=oy;}}}
+window.addEventListener("resize",()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(main,150);});setTimeout(main,300);
