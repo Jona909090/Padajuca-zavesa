@@ -1,11 +1,8 @@
 @import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,500;1,600&display=swap");
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
-html,
-body {
+html, body {
   margin: 0;
   width: 100%;
   height: 100%;
@@ -30,13 +27,94 @@ body {
   background: #000;
 }
 
+/* Masivan tamni ram vrata */
+#container::before {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+  left: 50%;
+  top: 50%;
+  width: min(84vw, 1100px);
+  height: 94vh;
+  transform: translate(-50%, -50%);
+  border: 30px solid transparent;
+  border-image: linear-gradient(
+    90deg,
+    #070605 0%,
+    #17110b 13%,
+    #47331b 20%,
+    #a56d24 24%,
+    #2a1d10 29%,
+    #090705 38%,
+    #090705 62%,
+    #2a1d10 71%,
+    #a56d24 76%,
+    #47331b 80%,
+    #17110b 87%,
+    #070605 100%
+  ) 1;
+  box-shadow:
+    0 0 0 6px #050403,
+    0 0 0 8px #6f471b,
+    0 0 0 12px #100c08,
+    0 18px 42px rgba(0,0,0,.95),
+    inset 0 0 22px rgba(255,170,50,.12);
+}
+
+/* Gornja ukrasna šipka na kojoj zavesa visi */
+#container::after {
+  content: "";
+  position: absolute;
+  z-index: 4;
+  pointer-events: none;
+  left: 50%;
+  top: 5.2vh;
+  width: min(72vw, 930px);
+  height: 14px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: linear-gradient(
+    180deg,
+    #4a2c0d 0%,
+    #e0a23b 26%,
+    #7b4a14 48%,
+    #efb44a 63%,
+    #35200c 100%
+  );
+  box-shadow:
+    0 2px 0 #160d05,
+    0 0 11px rgba(226,158,51,.38),
+    -10px 0 0 -2px #9b641f,
+    10px 0 0 -2px #9b641f;
+}
+
 canvas {
+  position: relative;
+  z-index: 2;
   width: 100vw;
   height: 100vh;
   display: block;
   cursor: grab;
 }
 
-canvas:active {
-  cursor: grabbing;
+canvas:active { cursor: grabbing; }
+
+@media (max-width: 700px) {
+  #container::before {
+    width: 94vw;
+    height: 96vh;
+    border-width: 18px;
+    box-shadow:
+      0 0 0 4px #050403,
+      0 0 0 6px #6f471b,
+      0 0 0 8px #100c08,
+      0 12px 28px rgba(0,0,0,.95);
+  }
+
+  #container::after {
+    width: 78vw;
+    top: 4.5vh;
+    height: 10px;
+  }
 }
