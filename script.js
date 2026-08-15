@@ -46,11 +46,13 @@ function computeLayout() {
   const textTop = anchorTop + hangerLength;
   const maxHeight = Math.max(340, vh - textTop - bottomGap);
   const height = Math.min(maxHeight, Math.max(520, lines.length * 28));
+  const cellHeight = height / Math.max(1, lines.length - 1);
+  const firstRowGap = cellHeight * 0.58;
   return {
     cols, rows: lines.length, lines, width, height,
-    anchorTop, hangerLength, textTop,
+    anchorTop, hangerLength, textTop, firstRowGap,
     cellWidth: width / Math.max(1, cols - 1),
-    cellHeight: height / Math.max(1, lines.length - 1)
+    cellHeight
   };
 }
 
@@ -111,9 +113,13 @@ function main() {
 
   for (let i = 0; i < layout.cols; i++) {
     for (let j = 0; j < layout.rows; j++) {
+      const y = j === 0
+        ? layout.hangerLength
+        : layout.hangerLength + layout.firstRowGap + (j - 1) * layout.cellHeight;
+
       particles.push(new Particle({
         x: i * layout.cellWidth,
-        y: layout.hangerLength + j * layout.cellHeight,
+        y,
         pinned: false,
         char: layout.lines[j]?.[i] || " "
       }));
@@ -125,7 +131,8 @@ function main() {
       const p = particles[getPointID(j, i, layout.rows)];
       if (j < layout.rows - 1) {
         const down = particles[getPointID(j + 1, i, layout.rows)];
-        const vc = new Constraint(p, down, layout.cellHeight, CONFIG.compressFactor, CONFIG.stretchFactor);
+        const verticalLength = j === 0 ? layout.firstRowGap : layout.cellHeight;
+        const vc = new Constraint(p, down, verticalLength, CONFIG.compressFactor, CONFIG.stretchFactor);
         constraints.push(vc);
         p.downConstraint = vc;
       }
