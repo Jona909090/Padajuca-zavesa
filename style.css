@@ -64,17 +64,57 @@ canvas:active { cursor:grabbing; }
 .finial.left { left:-18px; }
 .finial.right { right:-18px; }
 
+/* Prstenovi su sada tačno široki kao sama zavesa */
 .rings {
-  position:absolute; left:50%; top:118px; width:calc(100% - 245px); height:54px;
-  transform:translateX(-50%); display:flex; justify-content:space-between; align-items:flex-start;
+  position:absolute;
+  left:50%;
+  top:118px;
+  width:min(67vw,850px);
+  height:52px;
+  transform:translateX(-50%);
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
 }
+
 .rings i {
-  position:relative; width:12px; height:22px; border:2px solid #d6972d; border-radius:50%;
-  box-shadow:0 0 5px rgba(227,158,48,.35), inset 0 0 2px #6e430f;
+  position:relative;
+  width:12px;
+  height:22px;
+  flex:0 0 12px;
+  border:2px solid #e1a23a;
+  border-radius:50%;
+  background:rgba(55,31,8,.18);
+  box-shadow:
+    0 0 6px rgba(238,170,54,.48),
+    inset 0 0 3px #6e430f;
 }
+
+/* Svaki prsten ima vidljiv zlatni nosač koji ide do prvog reda slova */
 .rings i::after {
-  content:""; position:absolute; left:50%; top:18px; width:1px; height:30px; transform:translateX(-50%);
-  background:linear-gradient(#c7831f,#6e430f); opacity:.8;
+  content:"";
+  position:absolute;
+  left:50%;
+  top:19px;
+  width:2px;
+  height:31px;
+  transform:translateX(-50%);
+  border-radius:2px;
+  background:linear-gradient(180deg,#f2b347 0%,#b8701d 45%,#7b480f 100%);
+  box-shadow:0 0 5px rgba(238,166,47,.55);
+}
+
+.rings i::before {
+  content:"";
+  position:absolute;
+  left:50%;
+  top:47px;
+  width:5px;
+  height:5px;
+  transform:translateX(-50%);
+  border-radius:50%;
+  background:#d9962d;
+  box-shadow:0 0 5px rgba(238,166,47,.55);
 }
 
 @media (max-width:700px) {
@@ -89,7 +129,8 @@ canvas:active { cursor:grabbing; }
   .capital-left,.base-left { left:-8px; } .capital-right,.base-right { right:-8px; }
   .curtain-rod { top:80px; width:calc(100% - 128px); height:10px; }
   .finial { width:20px; height:20px; }
-  .rings { top:84px; width:calc(100% - 145px); height:40px; }
-  .rings i { width:8px; height:16px; border-width:1px; }
-  .rings i::after { top:14px; height:20px; }
+  .rings { top:84px; width:67vw; height:38px; }
+  .rings i { width:8px; height:16px; flex-basis:8px; border-width:1px; }
+  .rings i::after { top:14px; width:1px; height:20px; }
+  .rings i::before { top:32px; width:4px; height:4px; }
 }
