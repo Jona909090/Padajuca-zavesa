@@ -48,22 +48,17 @@ function computeLayout() {
   const height = Math.min(maxHeight, Math.max(520, lines.length * 28));
   const cellHeight = height / Math.max(1, lines.length - 1);
   const firstRowGap = cellHeight * 0.58;
-  return {
-    cols, rows: lines.length, lines, width, height,
-    anchorTop, hangerLength, textTop, firstRowGap,
-    cellWidth: width / Math.max(1, cols - 1),
-    cellHeight
-  };
+  return { cols, rows: lines.length, lines, width, height, anchorTop, hangerLength, textTop, firstRowGap, cellWidth: width / Math.max(1, cols - 1), cellHeight };
 }
 
 const CONFIG = {
-  gravity: 0.2,
-  damping: 0.99,
-  iterationsPerFrame: 6,
+  gravity: 0.17,
+  damping: 0.995,
+  iterationsPerFrame: 5,
   compressFactor: 0.03,
-  stretchFactor: 1.12,
-  mouseSize: 7000,
-  mouseStrength: 4
+  stretchFactor: 1.18,
+  mouseSize: 12000,
+  mouseStrength: 7
 };
 
 function sizeCanvas() {
@@ -98,31 +93,18 @@ function main() {
   if (rafID) cancelAnimationFrame(rafID);
   if (input) input.unbind();
   layout = computeLayout();
-
   c = document.createElement("canvas");
   container.innerHTML = "";
   container.appendChild(c);
   sizeCanvas();
-
-  const ctx = c.getContext("2d");
-  const particles = [];
-  const constraints = [];
-  const hangers = [];
+  const ctx = c.getContext("2d"), particles = [], constraints = [], hangers = [];
   const fontSize = Math.max(13, Math.min(22, layout.cellHeight * 0.75, layout.cellWidth * 1.42));
   const glyphs = makeGlyphAtlas(fontSize);
 
   for (let i = 0; i < layout.cols; i++) {
     for (let j = 0; j < layout.rows; j++) {
-      const y = j === 0
-        ? layout.hangerLength
-        : layout.hangerLength + layout.firstRowGap + (j - 1) * layout.cellHeight;
-
-      particles.push(new Particle({
-        x: i * layout.cellWidth,
-        y,
-        pinned: false,
-        char: layout.lines[j]?.[i] || " "
-      }));
+      const y = j === 0 ? layout.hangerLength : layout.hangerLength + layout.firstRowGap + (j - 1) * layout.cellHeight;
+      particles.push(new Particle({ x: i * layout.cellWidth, y, pinned: false, char: layout.lines[j]?.[i] || " " }));
     }
   }
 
@@ -133,18 +115,9 @@ function main() {
         const down = particles[getPointID(j + 1, i, layout.rows)];
         const verticalLength = j === 0 ? layout.firstRowGap : layout.cellHeight;
         const vc = new Constraint(p, down, verticalLength, CONFIG.compressFactor, CONFIG.stretchFactor);
-        constraints.push(vc);
-        p.downConstraint = vc;
+        constraints.push(vc); p.downConstraint = vc;
       }
-      if (i < layout.cols - 1) {
-        constraints.push(new Constraint(
-          p,
-          particles[getPointID(j, i + 1, layout.rows)],
-          layout.cellWidth,
-          0.72,
-          3.2
-        ));
-      }
+      if (i < layout.cols - 1) constraints.push(new Constraint(p, particles[getPointID(j, i + 1, layout.rows)], layout.cellWidth, 0.72, 3.2));
     }
   }
 
@@ -153,211 +126,71 @@ function main() {
     const col = Math.round((r / (RING_COUNT - 1)) * (layout.cols - 1));
     const topParticle = particles[getPointID(0, col, layout.rows)];
     const anchor = new Particle({ x, y: 0, pinned: true, char: "" });
-    const hanger = new Constraint(anchor, topParticle, layout.hangerLength, 0.96, 1.06);
-    constraints.push(hanger);
-    hangers.push({ anchor, particle: topParticle });
+    const hanger = new Constraint(anchor, topParticle, layout.hangerLength, 0.92, 1.12);
+    constraints.push(hanger); hangers.push({ anchor, particle: topParticle });
   }
 
   input = new Input(c, particles);
 
   function drawHangers(offsetX, offsetY) {
-    ctx.save();
-    ctx.setTransform(dpr, 0, 0, dpr, dpr * offsetX, dpr * offsetY);
-    ctx.lineWidth = 1.7;
-    ctx.strokeStyle = "#d99a32";
-    ctx.shadowColor = "rgba(238,166,47,.45)";
-    ctx.shadowBlur = 4;
-
+    ctx.save(); ctx.setTransform(dpr, 0, 0, dpr, dpr * offsetX, dpr * offsetY);
+    ctx.lineWidth = 1.7; ctx.strokeStyle = "#d99a32"; ctx.shadowColor = "rgba(238,166,47,.45)"; ctx.shadowBlur = 4;
     for (const h of hangers) {
-      ctx.beginPath();
-      ctx.moveTo(h.anchor.pos.x, h.anchor.pos.y);
-      ctx.lineTo(h.particle.pos.x, h.particle.pos.y - 4);
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.arc(h.particle.pos.x, h.particle.pos.y - 3, 2.4, 0, Math.PI * 2);
-      ctx.fillStyle = "#d99a32";
-      ctx.fill();
+      ctx.beginPath(); ctx.moveTo(h.anchor.pos.x, h.anchor.pos.y); ctx.lineTo(h.particle.pos.x, h.particle.pos.y - 4); ctx.stroke();
+      ctx.beginPath(); ctx.arc(h.particle.pos.x, h.particle.pos.y - 3, 2.4, 0, Math.PI * 2); ctx.fillStyle = "#d99a32"; ctx.fill();
     }
     ctx.restore();
   }
 
   function draw() {
-    const offsetX = (c.width / dpr - layout.width) / 2;
-    const offsetY = layout.anchorTop;
-
+    const offsetX = (c.width / dpr - layout.width) / 2, offsetY = layout.anchorTop;
     drawHangers(offsetX, offsetY);
-
     for (const p of particles) {
       if (!p.char || p.char === " ") continue;
-      const img = glyphs[p.char];
-      if (!img) continue;
-
+      const img = glyphs[p.char]; if (!img) continue;
       let cos = 1, sin = 0;
       if (p.downConstraint) {
-        const dx = p.downConstraint.p2.pos.x - p.downConstraint.p1.pos.x;
-        const dy = p.downConstraint.p2.pos.y - p.downConstraint.p1.pos.y;
-        const a = Math.atan2(dy, dx) - Math.PI / 2;
-        cos = Math.cos(a);
-        sin = Math.sin(a);
+        const dx = p.downConstraint.p2.pos.x - p.downConstraint.p1.pos.x, dy = p.downConstraint.p2.pos.y - p.downConstraint.p1.pos.y;
+        const a = Math.atan2(dy, dx) - Math.PI / 2; cos = Math.cos(a); sin = Math.sin(a);
       }
-
-      ctx.setTransform(
-        dpr * cos, dpr * sin,
-        -dpr * sin, dpr * cos,
-        dpr * (p.pos.x + offsetX),
-        dpr * (p.pos.y + offsetY)
-      );
-      const half = img.logicalSize / 2;
-      ctx.globalAlpha = 0.98;
-      ctx.drawImage(img, -half, -half, img.logicalSize, img.logicalSize);
+      ctx.setTransform(dpr * cos, dpr * sin, -dpr * sin, dpr * cos, dpr * (p.pos.x + offsetX), dpr * (p.pos.y + offsetY));
+      const half = img.logicalSize / 2; ctx.globalAlpha = 0.98; ctx.drawImage(img, -half, -half, img.logicalSize, img.logicalSize);
     }
-
-    ctx.globalAlpha = 1;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 1; ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
 
   let last = 0;
   function loop(now) {
-    rafID = requestAnimationFrame(loop);
-    ctx.clearRect(0, 0, c.width, c.height);
-    const dt = last ? Math.min(now - last, 32) : 16;
-    last = now;
+    rafID = requestAnimationFrame(loop); ctx.clearRect(0, 0, c.width, c.height);
+    const dt = last ? Math.min(now - last, 32) : 16; last = now;
     particles.forEach(p => p.update(dt));
-    for (let k = 0; k < CONFIG.iterationsPerFrame; k++) {
-      constraints.forEach(con => con.solve());
-    }
+    for (let k = 0; k < CONFIG.iterationsPerFrame; k++) constraints.forEach(con => con.solve());
     draw();
   }
   rafID = requestAnimationFrame(loop);
 }
 
 class Input {
-  constructor(canvas, particles) {
-    this.c = canvas;
-    this.particles = particles;
-    this.mouse = new Vec2();
-    this.radius = Math.max(18, layout.cellWidth * 1.25);
-    this.bind();
-  }
-  setMouse(e) {
-    const rect = this.c.getBoundingClientRect();
-    const ox = (this.c.width / dpr - layout.width) / 2;
-    const oy = layout.anchorTop;
-    this.mouse.x = e.clientX - rect.left - ox;
-    this.mouse.y = e.clientY - rect.top - oy;
-  }
-  down(e) {
-    this.setMouse(e);
-    for (const p of this.particles) {
-      if (this.mouse.subtractNew(p.pos).length < this.radius) {
-        this.grabbed = p;
-        p.wasPinned = p.pinned;
-        p.pinned = true;
-        break;
-      }
-    }
-  }
+  constructor(canvas, particles) { this.c = canvas; this.particles = particles; this.mouse = new Vec2(); this.radius = Math.max(26, layout.cellWidth * 1.8); this.bind(); }
+  setMouse(e) { const rect = this.c.getBoundingClientRect(), ox = (this.c.width / dpr - layout.width) / 2, oy = layout.anchorTop; this.mouse.x = e.clientX - rect.left - ox; this.mouse.y = e.clientY - rect.top - oy; }
+  down(e) { this.setMouse(e); for (const p of this.particles) if (this.mouse.subtractNew(p.pos).length < this.radius) { this.grabbed = p; p.wasPinned = p.pinned; p.pinned = true; break; } }
   move(e) {
     this.setMouse(e);
-    if (this.grabbed) {
-      this.grabbed.pos.reset(this.mouse.x, this.mouse.y);
-      this.grabbed.oldPos.reset(this.mouse.x, this.mouse.y);
-    }
+    if (this.grabbed) { this.grabbed.pos.reset(this.mouse.x, this.mouse.y); this.grabbed.oldPos.reset(this.mouse.x, this.mouse.y); }
     for (const p of this.particles) {
-      const diff = this.mouse.subtractNew(p.pos);
-      const ls = diff.lengthSquared;
-      if (ls < CONFIG.mouseSize) {
-        const a = diff.angle - Math.PI;
-        const strength = smoothstep(CONFIG.mouseSize, -2000, ls) * CONFIG.mouseStrength / 300;
-        p.applyForce(new Vec2(Math.cos(a) * strength, Math.sin(a) * strength));
-      }
+      const diff = this.mouse.subtractNew(p.pos), ls = diff.lengthSquared;
+      if (ls < CONFIG.mouseSize) { const a = diff.angle - Math.PI, strength = smoothstep(CONFIG.mouseSize, -2000, ls) * CONFIG.mouseStrength / 300; p.applyForce(new Vec2(Math.cos(a) * strength, Math.sin(a) * strength)); }
     }
   }
-  up() {
-    if (this.grabbed) {
-      this.grabbed.pinned = this.grabbed.wasPinned;
-      this.grabbed = null;
-    }
-  }
+  up() { if (this.grabbed) { this.grabbed.pinned = this.grabbed.wasPinned; this.grabbed = null; } }
   context(e) { e.preventDefault(); }
-  bind() {
-    this.down = this.down.bind(this);
-    this.move = this.move.bind(this);
-    this.up = this.up.bind(this);
-    this.context = this.context.bind(this);
-    document.addEventListener("pointerdown", this.down);
-    document.addEventListener("pointermove", this.move);
-    document.addEventListener("pointerup", this.up);
-    document.addEventListener("contextmenu", this.context);
-  }
-  unbind() {
-    document.removeEventListener("pointerdown", this.down);
-    document.removeEventListener("pointermove", this.move);
-    document.removeEventListener("pointerup", this.up);
-    document.removeEventListener("contextmenu", this.context);
-  }
+  bind() { this.down = this.down.bind(this); this.move = this.move.bind(this); this.up = this.up.bind(this); this.context = this.context.bind(this); document.addEventListener("pointerdown", this.down); document.addEventListener("pointermove", this.move); document.addEventListener("pointerup", this.up); document.addEventListener("contextmenu", this.context); }
+  unbind() { document.removeEventListener("pointerdown", this.down); document.removeEventListener("pointermove", this.move); document.removeEventListener("pointerup", this.up); document.removeEventListener("contextmenu", this.context); }
 }
 
-class Vec2 {
-  constructor(x = 0, y = 0) { this.reset(x, y); }
-  reset(x = 0, y = 0) { this.x = x; this.y = y; return this; }
-  zero() { return this.reset(0, 0); }
-  clone() { return new Vec2(this.x, this.y); }
-  add(v) { this.x += v.x; this.y += v.y; return this; }
-  subtract(v) { this.x -= v.x; this.y -= v.y; return this; }
-  subtractNew(v) { return this.clone().subtract(v); }
-  get lengthSquared() { return this.x * this.x + this.y * this.y; }
-  get length() { return Math.hypot(this.x, this.y); }
-  get angle() { return Math.atan2(this.y, this.x); }
-}
+class Vec2 { constructor(x = 0, y = 0) { this.reset(x, y); } reset(x = 0, y = 0) { this.x = x; this.y = y; return this; } zero() { return this.reset(0, 0); } clone() { return new Vec2(this.x, this.y); } add(v) { this.x += v.x; this.y += v.y; return this; } subtract(v) { this.x -= v.x; this.y -= v.y; return this; } subtractNew(v) { return this.clone().subtract(v); } get lengthSquared() { return this.x * this.x + this.y * this.y; } get length() { return Math.hypot(this.x, this.y); } get angle() { return Math.atan2(this.y, this.x); } }
+class Particle { constructor({ x, y, pinned, char }) { this.pos = new Vec2(x, y); this.oldPos = new Vec2(x, y); this.acc = new Vec2(); this.pinned = pinned; this.char = char; this.downConstraint = null; } applyForce(v) { this.acc.add(v); } update(delta) { if (this.pinned) { this.acc.zero(); return; } const vx = (this.pos.x - this.oldPos.x) * CONFIG.damping, vy = (this.pos.y - this.oldPos.y) * CONFIG.damping; this.oldPos.reset(this.pos.x, this.pos.y); const dd = Math.max(1, delta * delta); this.applyForce(new Vec2(0, CONFIG.gravity / dd)); this.pos.x += vx + this.acc.x * dd; this.pos.y += vy + this.acc.y * dd; this.acc.zero(); } }
+class Constraint { constructor(p1, p2, length, compressFactor, stretchFactor) { this.p1 = p1; this.p2 = p2; this.length = length; this.min = length * compressFactor; this.max = length * stretchFactor; } solve() { const dx = this.p2.pos.x - this.p1.pos.x, dy = this.p2.pos.y - this.p1.pos.y, dist = Math.hypot(dx, dy); if (!dist) return; let target = this.length; if (dist < this.min) target = this.min; else if (dist > this.max) target = this.max; else return; const percent = (target - dist) / dist / 2, ox = dx * percent, oy = dy * percent; if (!this.p1.pinned) { this.p1.pos.x -= ox; this.p1.pos.y -= oy; } if (!this.p2.pinned) { this.p2.pos.x += ox; this.p2.pos.y += oy; } } }
 
-class Particle {
-  constructor({ x, y, pinned, char }) {
-    this.pos = new Vec2(x, y);
-    this.oldPos = new Vec2(x, y);
-    this.acc = new Vec2();
-    this.pinned = pinned;
-    this.char = char;
-    this.downConstraint = null;
-  }
-  applyForce(v) { this.acc.add(v); }
-  update(delta) {
-    if (this.pinned) { this.acc.zero(); return; }
-    const vx = (this.pos.x - this.oldPos.x) * CONFIG.damping;
-    const vy = (this.pos.y - this.oldPos.y) * CONFIG.damping;
-    this.oldPos.reset(this.pos.x, this.pos.y);
-    const dd = Math.max(1, delta * delta);
-    this.applyForce(new Vec2(0, CONFIG.gravity / dd));
-    this.pos.x += vx + this.acc.x * dd;
-    this.pos.y += vy + this.acc.y * dd;
-    this.acc.zero();
-  }
-}
-
-class Constraint {
-  constructor(p1, p2, length, compressFactor, stretchFactor) {
-    this.p1 = p1; this.p2 = p2; this.length = length;
-    this.min = length * compressFactor; this.max = length * stretchFactor;
-  }
-  solve() {
-    const dx = this.p2.pos.x - this.p1.pos.x;
-    const dy = this.p2.pos.y - this.p1.pos.y;
-    const dist = Math.hypot(dx, dy);
-    if (!dist) return;
-    let target = this.length;
-    if (dist < this.min) target = this.min;
-    else if (dist > this.max) target = this.max;
-    else return;
-    const percent = (target - dist) / dist / 2;
-    const ox = dx * percent, oy = dy * percent;
-    if (!this.p1.pinned) { this.p1.pos.x -= ox; this.p1.pos.y -= oy; }
-    if (!this.p2.pinned) { this.p2.pos.x += ox; this.p2.pos.y += oy; }
-  }
-}
-
-window.addEventListener("resize", () => {
-  clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(main, 150);
-});
+window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(main, 150); });
 setTimeout(main, 300);
