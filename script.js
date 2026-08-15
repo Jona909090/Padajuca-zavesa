@@ -1,184 +1,121 @@
-import {
-  getPointID,
-  smoothstep
-} from "https://codepen.io/shubniggurath/pen/OPyPdmm.js";
+import { getPointID, smoothstep } from "https://codepen.io/shubniggurath/pen/OPyPdmm.js";
 
-console.clear();
+const MESSAGE = `kažu da čovek u životu sretne mnogo ljudi. Neki dođu i prođu, neki ostave uspomene. A onda se pojavi jedna osoba koja ne traži dozvolu da uđe u tvoje srce. Samo se pojavi... i od tog trenutka više ništa nije isto. ne znam da li si ikada shvatila šta si probudila u meni. Nisam tražio ljubav, nisam je ni očekivao. A onda si ti jednim pogledom uspela da vratiš život delu mene za koji sam mislio da je odavno nestao. od tada se borim sa jednom čudnom tišinom. Spolja se smejem, razgovaram sa ljudima, radim, živim... a u sebi svaki dan vodim isti razgovor sa srcem koje uporno bira tebe. I ne zna da odustane. najviše boli to što ljubav nekad nije dovoljna da bi dvoje ljudi bili zajedno. Nekad ostane samo ono „šta bi bilo kad bi bilo“, a upravo te neizgovorene priče najviše bole. ali znaš šta... Ako ikada u životu budeš pomislila da nisi bila dovoljno voljena, seti se da je negde postojao čovek koji nije želeo da promeni ništa na tebi. Nije želeo savršenu devojku. Želeo je samo tebe.`;
 
-const MESSAGE_LINES = [
-  "",
-  "kažu da čovek u životu sretne mnogo ljudi.",
-  "Neki dođu i prođu, neki ostave uspomene.",
-  "A onda se pojavi jedna osoba koja ne traži",
-  "dozvolu da uđe u tvoje srce. Samo se pojavi...",
-  "i od tog trenutka više ništa nije isto.",
-  "",
-  "────────────── ✦ ──────────────",
-  "",
-  "ne znam da li si ikada shvatila šta si probudila",
-  "u meni. Nisam tražio ljubav, nisam je ni očekivao.",
-  "A onda si ti jednim pogledom uspela da vratiš",
-  "život delu mene za koji sam mislio da je",
-  "odavno nestao.",
-  "",
-  "────────────── ✦ ──────────────",
-  "",
-  "od tada se borim sa jednom čudnom tišinom.",
-  "Spolja se smejem, razgovaram sa ljudima,",
-  "radim, živim... a u sebi svaki dan vodim",
-  "isti razgovor sa srcem koje uporno bira tebe.",
-  "I ne zna da odustane.",
-  "",
-  "────────────── ✦ ──────────────",
-  "",
-  "najviše boli to što ljubav nekad nije dovoljna",
-  "da bi dvoje ljudi bili zajedno. Nekad ostane",
-  "samo ono „šta bi bilo kad bi bilo“, a upravo",
-  "te neizgovorene priče najviše bole.",
-  "",
-  "────────────── ✦ ──────────────",
-  "",
-  "ali znaš šta... Ako ikada u životu budeš",
-  "pomislila da nisi bila dovoljno voljena, seti se",
-  "da je negde postojao čovek koji nije želeo da",
-  "promeni ništa na tebi. Nije želeo savršenu",
-  "devojku. Želeo je samo tebe.",
-  ""
-];
-
-const GRID_W = Math.max(...MESSAGE_LINES.map(line => line.length)) + 2;
-const GRID_H = MESSAGE_LINES.length;
 const dpr = Math.min(window.devicePixelRatio || 1, 2);
+let c;
+let rafID;
+let input;
+let resizeTimer;
+let layout;
 
-function getCurtainSize() {
+function justifyLine(words, cols, isLast) {
+  if (words.length === 1 || isLast) return words.join(" ").padEnd(cols, " ");
+  const letters = words.reduce((n, w) => n + w.length, 0);
+  const gaps = words.length - 1;
+  const totalSpaces = Math.max(gaps, cols - letters);
+  const base = Math.floor(totalSpaces / gaps);
+  let extra = totalSpaces % gaps;
+  let out = "";
+  words.forEach((word, i) => {
+    out += word;
+    if (i < gaps) {
+      const count = base + (extra-- > 0 ? 1 : 0);
+      out += " ".repeat(count);
+    }
+  });
+  return out.slice(0, cols).padEnd(cols, " ");
+}
+
+function wrapAndJustify(text, cols) {
+  const words = text.trim().split(/\s+/);
+  const rows = [];
+  let line = [];
+  let len = 0;
+
+  for (const word of words) {
+    const next = len + (line.length ? 1 : 0) + word.length;
+    if (next > cols && line.length) {
+      rows.push(line);
+      line = [word];
+      len = word.length;
+    } else {
+      line.push(word);
+      len = next;
+    }
+  }
+  if (line.length) rows.push(line);
+
+  return rows.map((row, i) => justifyLine(row, cols, i === rows.length - 1));
+}
+
+function computeLayout() {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const cols = vw < 600 ? 36 : vw < 900 ? 48 : 64;
+  const lines = wrapAndJustify(MESSAGE, cols);
+
+  const width = Math.min(vw * 0.94, 1280);
+  const height = Math.min(vh * 0.9, Math.max(520, lines.length * 28));
+
   return {
-    width: Math.min(1120, Math.max(340, window.innerWidth * 0.92)),
-    height: Math.min(900, Math.max(560, window.innerHeight * 0.90))
+    cols,
+    rows: lines.length,
+    lines,
+    width,
+    height,
+    cellWidth: width / Math.max(1, cols - 1),
+    cellHeight: height / Math.max(1, lines.length - 1)
   };
 }
 
-const initialSize = getCurtainSize();
-
 const CONFIG = {
-  awidth: initialSize.width,
-  aheight: initialSize.height,
-  gridW: GRID_W,
-  gridH: GRID_H,
   gravity: 0.2,
   damping: 0.99,
   iterationsPerFrame: 5,
-  compressFactor: 0.02,
-  stretchFactor: 1.1,
-  mouseSize: 6500,
-  mouseStrength: 4,
-  contain: false,
-  randomSolve: false
+  compressFactor: 0.03,
+  stretchFactor: 1.12,
+  mouseSize: 7000,
+  mouseStrength: 4
 };
 
-function updateCellSize() {
-  CONFIG.cellWidth = CONFIG.awidth / (CONFIG.gridW - 1);
-  CONFIG.cellHeight = CONFIG.aheight / (CONFIG.gridH - 1);
-}
-
-updateCellSize();
-
-let rafID;
-let input;
-let c;
-let resizeTimer;
-
 function sizeCanvas() {
-  if (!c) return;
   c.style.width = window.innerWidth + "px";
   c.style.height = window.innerHeight + "px";
   c.width = Math.round(window.innerWidth * dpr);
   c.height = Math.round(window.innerHeight * dpr);
 }
 
-window.addEventListener("resize", () => {
-  clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => {
-    const next = getCurtainSize();
-    CONFIG.awidth = next.width;
-    CONFIG.aheight = next.height;
-    updateCellSize();
-    main();
-  }, 160);
-});
+function makeGlyphAtlas(fontSize) {
+  const atlas = {};
+  const chars = new Set(MESSAGE);
+  const box = Math.ceil(fontSize * 2.4);
 
-function centerLine(line) {
-  const usable = CONFIG.gridW - 2;
-  const trimmed = line.slice(0, usable);
-  const left = Math.max(0, Math.floor((usable - trimmed.length) / 2));
-  return (" ".repeat(left) + trimmed).padEnd(usable, " ");
-}
-
-function buildMessageGrid() {
-  return MESSAGE_LINES.map(line => " " + centerLine(line) + " ");
-}
-
-function createGlyphAtlas(fontSize) {
-  const normal = {};
-  const accent = {};
-  const allChars = new Set(MESSAGE_LINES.join(""));
-  const box = Math.ceil(fontSize * 2.2);
-
-  for (const ch of allChars) {
+  for (const ch of chars) {
     if (ch === " ") continue;
-
-    for (const type of ["normal", "accent"]) {
-      const off = document.createElement("canvas");
-      off.width = off.height = Math.ceil(box * dpr);
-      const octx = off.getContext("2d");
-      octx.scale(dpr, dpr);
-      octx.font = `italic 600 ${fontSize}px "Cormorant Garamond", Georgia, serif`;
-      octx.textAlign = "center";
-      octx.textBaseline = "middle";
-
-      if (type === "accent") {
-        octx.fillStyle = "#f2c85c";
-        octx.shadowColor = "rgba(255, 196, 70, 0.85)";
-        octx.shadowBlur = 7;
-      } else {
-        octx.fillStyle = "#f1dba8";
-        octx.shadowColor = "rgba(255, 205, 112, 0.46)";
-        octx.shadowBlur = 4.5;
-      }
-
-      octx.fillText(ch, box / 2, box / 2);
-      off.logicalSize = box;
-
-      if (type === "accent") accent[ch] = off;
-      else normal[ch] = off;
-    }
+    const off = document.createElement("canvas");
+    off.width = Math.ceil(box * dpr);
+    off.height = Math.ceil(box * dpr);
+    const ctx = off.getContext("2d");
+    ctx.scale(dpr, dpr);
+    ctx.font = `italic 600 ${fontSize}px "Cormorant Garamond", Georgia, serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#f0c85b";
+    ctx.shadowColor = "rgba(255, 198, 70, 0.72)";
+    ctx.shadowBlur = 5;
+    ctx.fillText(ch, box / 2, box / 2);
+    off.logicalSize = box;
+    atlas[ch] = off;
   }
-
-  return { normal, accent };
+  return atlas;
 }
 
 function main() {
   if (rafID) cancelAnimationFrame(rafID);
   if (input) input.unbind();
 
-  const {
-    awidth: width,
-    aheight: height,
-    gridW,
-    gridH,
-    iterationsPerFrame,
-    compressFactor,
-    stretchFactor,
-    cellWidth,
-    cellHeight
-  } = CONFIG;
-
-  const fontSize = Math.max(
-    12,
-    Math.min(22, cellHeight * 0.86, cellWidth * 1.85)
-  );
-
-  const glyphs = createGlyphAtlas(fontSize);
-  const messageGrid = buildMessageGrid();
+  layout = computeLayout();
 
   c = document.createElement("canvas");
   container.innerHTML = "";
@@ -188,184 +125,132 @@ function main() {
   const ctx = c.getContext("2d");
   const particles = [];
   const constraints = [];
+  const fontSize = Math.max(14, Math.min(25, layout.cellHeight * 0.78, layout.cellWidth * 1.55));
+  const glyphs = makeGlyphAtlas(fontSize);
 
-  input = new Input({ c, particles });
-
-  for (let i = 0; i < gridW; i++) {
-    for (let j = 0; j < gridH; j++) {
-      const x = i * cellWidth;
-      const y = j * cellHeight;
-      const id = getPointID(j, i, gridH);
-      const pinned = j === 0;
-      const row = messageGrid[j] || "";
-      const char = row[i] || " ";
-      const accentRow = MESSAGE_LINES[j]?.includes("✦") || MESSAGE_LINES[j]?.includes("─");
-
-      const particle = new Particle({
-        x,
-        y,
-        pinned,
-        id,
-        char,
-        accent: accentRow
+  for (let i = 0; i < layout.cols; i++) {
+    for (let j = 0; j < layout.rows; j++) {
+      const id = getPointID(j, i, layout.rows);
+      const p = new Particle({
+        x: i * layout.cellWidth,
+        y: j * layout.cellHeight,
+        pinned: j === 0,
+        char: layout.lines[j]?.[i] || " "
       });
-
-      particles.push(particle);
+      particles.push(p);
     }
   }
 
-  for (let i = 0; i < gridW; i++) {
-    for (let j = 0; j < gridH; j++) {
-      const id = getPointID(j, i, gridH);
+  for (let i = 0; i < layout.cols; i++) {
+    for (let j = 0; j < layout.rows; j++) {
+      const id = getPointID(j, i, layout.rows);
       const p = particles[id];
 
-      if (j < gridH - 1) {
-        const bottomP = particles[getPointID(j + 1, i, gridH)];
-        const vc = new Constraint({
-          p1: p,
-          p2: bottomP,
-          length: cellHeight,
-          compressFactor,
-          stretchFactor,
-          isSpacer: false
-        });
+      if (j < layout.rows - 1) {
+        const down = particles[getPointID(j + 1, i, layout.rows)];
+        const vc = new Constraint(p, down, layout.cellHeight, CONFIG.compressFactor, CONFIG.stretchFactor);
         constraints.push(vc);
         p.downConstraint = vc;
       }
 
-      if (i < gridW - 1) {
-        const rightP = particles[getPointID(j, i + 1, gridH)];
-        constraints.push(new Constraint({
-          p1: p,
-          p2: rightP,
-          length: cellWidth,
-          compressFactor: 0.68,
-          stretchFactor: 3.2,
-          isSpacer: true
-        }));
+      if (i < layout.cols - 1) {
+        const right = particles[getPointID(j, i + 1, layout.rows)];
+        constraints.push(new Constraint(p, right, layout.cellWidth, 0.72, 3.2));
       }
     }
   }
 
-  function drawMessage() {
-    const offsetX = (c.width / dpr - width) / 2;
-    const offsetY = (c.height / dpr - height) / 2;
+  input = new Input(c, particles);
 
-    particles.forEach(p => {
-      if (!p.char || p.char === " ") return;
-      const atlas = p.accent ? glyphs.accent : glyphs.normal;
-      const img = atlas[p.char];
-      if (!img) return;
+  function draw() {
+    const offsetX = (c.width / dpr - layout.width) / 2;
+    const offsetY = (c.height / dpr - layout.height) / 2;
+
+    for (const p of particles) {
+      if (!p.char || p.char === " ") continue;
+      const img = glyphs[p.char];
+      if (!img) continue;
 
       let cos = 1;
       let sin = 0;
-      const constraint = p.downConstraint;
-
-      if (constraint) {
-        const dx = constraint.p2.pos.x - constraint.p1.pos.x;
-        const dy = constraint.p2.pos.y - constraint.p1.pos.y;
-        const angle = Math.atan2(dy, dx) - Math.PI / 2;
-        cos = Math.cos(angle);
-        sin = Math.sin(angle);
+      if (p.downConstraint) {
+        const dx = p.downConstraint.p2.pos.x - p.downConstraint.p1.pos.x;
+        const dy = p.downConstraint.p2.pos.y - p.downConstraint.p1.pos.y;
+        const a = Math.atan2(dy, dx) - Math.PI / 2;
+        cos = Math.cos(a);
+        sin = Math.sin(a);
       }
 
       const tx = p.pos.x + offsetX;
       const ty = p.pos.y + offsetY;
-
-      ctx.setTransform(
-        dpr * cos,
-        dpr * sin,
-        -dpr * sin,
-        dpr * cos,
-        dpr * tx,
-        dpr * ty
-      );
-
+      ctx.setTransform(dpr * cos, dpr * sin, -dpr * sin, dpr * cos, dpr * tx, dpr * ty);
       const half = img.logicalSize / 2;
-      ctx.globalAlpha = p.accent ? 0.97 : 0.94;
+      ctx.globalAlpha = 0.98;
       ctx.drawImage(img, -half, -half, img.logicalSize, img.logicalSize);
-    });
+    }
 
     ctx.globalAlpha = 1;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
 
-  let lastDelta = 0;
-
-  function runloop(delta) {
-    rafID = requestAnimationFrame(runloop);
-
-    ctx.save();
+  let last = 0;
+  function loop(now) {
+    rafID = requestAnimationFrame(loop);
     ctx.clearRect(0, 0, c.width, c.height);
 
-    const frameDelta = lastDelta ? Math.min(delta - lastDelta, 32) : 16;
-    particles.forEach(p => p.update(frameDelta));
-    lastDelta = delta;
+    const dt = last ? Math.min(now - last, 32) : 16;
+    last = now;
+    particles.forEach(p => p.update(dt));
 
-    for (let i = 0; i < iterationsPerFrame; i++) {
-      for (let j = 0; j < constraints.length; j++) {
-        constraints[j].solve();
-      }
+    for (let k = 0; k < CONFIG.iterationsPerFrame; k++) {
+      constraints.forEach(con => con.solve());
     }
 
-    drawMessage();
-    ctx.restore();
+    draw();
   }
 
-  rafID = requestAnimationFrame(runloop);
+  rafID = requestAnimationFrame(loop);
 }
 
 class Input {
-  constructor({ c, particles }) {
-    this.c = c;
+  constructor(canvas, particles) {
+    this.c = canvas;
     this.particles = particles;
-    this.mousePos = new Vec2();
-    this.grabRadius = Math.max(18, CONFIG.cellWidth * 1.2);
+    this.mouse = new Vec2();
+    this.radius = Math.max(18, layout.cellWidth * 1.25);
     this.bind();
   }
 
   setMouse(e) {
     const rect = this.c.getBoundingClientRect();
-    const cssX = e.clientX - rect.left;
-    const cssY = e.clientY - rect.top;
-    const offsetX = (this.c.width / dpr - CONFIG.awidth) / 2;
-    const offsetY = (this.c.height / dpr - CONFIG.aheight) / 2;
-    this.mousePos.x = cssX - offsetX;
-    this.mousePos.y = cssY - offsetY;
+    const offsetX = (this.c.width / dpr - layout.width) / 2;
+    const offsetY = (this.c.height / dpr - layout.height) / 2;
+    this.mouse.x = e.clientX - rect.left - offsetX;
+    this.mouse.y = e.clientY - rect.top - offsetY;
   }
 
-  pointerdown(e) {
+  down(e) {
     this.setMouse(e);
-
     for (const p of this.particles) {
-      if (this.mousePos.subtractNew(p.pos).length < this.grabRadius) {
-        this.grabbedParticle = p;
-        this.grabbedParticle.originalPinnedState = this.grabbedParticle.pinned;
-        this.grabbedParticle.pinned = true;
+      if (this.mouse.subtractNew(p.pos).length < this.radius) {
+        this.grabbed = p;
+        p.wasPinned = p.pinned;
+        p.pinned = true;
         break;
       }
     }
   }
 
-  pointerup() {
-    if (this.grabbedParticle) {
-      this.grabbedParticle.pinned = this.grabbedParticle.originalPinnedState;
-      this.grabbedParticle = null;
-    }
-  }
-
-  pointermove(e) {
+  move(e) {
     this.setMouse(e);
-
-    if (this.grabbedParticle) {
-      this.grabbedParticle.pos.reset(this.mousePos.x, this.mousePos.y);
-      this.grabbedParticle.oldPos.reset(this.mousePos.x, this.mousePos.y);
+    if (this.grabbed) {
+      this.grabbed.pos.reset(this.mouse.x, this.mouse.y);
+      this.grabbed.oldPos.reset(this.mouse.x, this.mouse.y);
     }
 
     for (const p of this.particles) {
-      const diff = this.mousePos.subtractNew(p.pos);
+      const diff = this.mouse.subtractNew(p.pos);
       const ls = diff.lengthSquared;
-
       if (ls < CONFIG.mouseSize) {
         const a = diff.angle - Math.PI;
         const strength = smoothstep(CONFIG.mouseSize, -2000, ls) * CONFIG.mouseStrength / 300;
@@ -374,176 +259,115 @@ class Input {
     }
   }
 
-  contextmenu(e) {
-    e.preventDefault();
+  up() {
+    if (this.grabbed) {
+      this.grabbed.pinned = this.grabbed.wasPinned;
+      this.grabbed = null;
+    }
   }
 
-  bind() {
-    this.pointerdown = this.pointerdown.bind(this);
-    this.pointerup = this.pointerup.bind(this);
-    this.pointermove = this.pointermove.bind(this);
-    this.contextmenu = this.contextmenu.bind(this);
+  context(e) { e.preventDefault(); }
 
-    document.addEventListener("pointerdown", this.pointerdown);
-    document.addEventListener("pointerup", this.pointerup);
-    document.addEventListener("pointermove", this.pointermove);
-    document.addEventListener("contextmenu", this.contextmenu);
+  bind() {
+    this.down = this.down.bind(this);
+    this.move = this.move.bind(this);
+    this.up = this.up.bind(this);
+    this.context = this.context.bind(this);
+    document.addEventListener("pointerdown", this.down);
+    document.addEventListener("pointermove", this.move);
+    document.addEventListener("pointerup", this.up);
+    document.addEventListener("contextmenu", this.context);
   }
 
   unbind() {
-    document.removeEventListener("pointerdown", this.pointerdown);
-    document.removeEventListener("pointerup", this.pointerup);
-    document.removeEventListener("pointermove", this.pointermove);
-    document.removeEventListener("contextmenu", this.contextmenu);
+    document.removeEventListener("pointerdown", this.down);
+    document.removeEventListener("pointermove", this.move);
+    document.removeEventListener("pointerup", this.up);
+    document.removeEventListener("contextmenu", this.context);
   }
 }
 
 class Vec2 {
-  constructor(x = 0, y = 0) {
-    this.reset(x, y);
-  }
-
-  zero() {
-    this.reset(0, 0);
-  }
-
-  reset(x = 0, y = 0) {
-    this.x = x;
-    this.y = y;
-  }
-
-  clone() {
-    return new Vec2(this.x, this.y);
-  }
-
-  add(v) {
-    this.x += v.x;
-    this.y += v.y;
-    return this;
-  }
-
-  subtract(v) {
-    this.x -= v.x;
-    this.y -= v.y;
-    return this;
-  }
-
-  subtractNew(v) {
-    return this.clone().subtract(v);
-  }
-
-  get lengthSquared() {
-    return this.x ** 2 + this.y ** 2;
-  }
-
-  get length() {
-    return Math.hypot(this.x, this.y);
-  }
-
-  get angle() {
-    return Math.atan2(this.y, this.x);
-  }
-
-  get array() {
-    return [this.x, this.y];
-  }
-
-  [Symbol.iterator]() {
-    const values = this.array;
-    let i = 0;
-    return {
-      next() {
-        if (i < values.length) {
-          return { value: values[i++], done: false };
-        }
-        return { done: true };
-      }
-    };
-  }
+  constructor(x = 0, y = 0) { this.reset(x, y); }
+  reset(x = 0, y = 0) { this.x = x; this.y = y; return this; }
+  zero() { return this.reset(0, 0); }
+  clone() { return new Vec2(this.x, this.y); }
+  add(v) { this.x += v.x; this.y += v.y; return this; }
+  subtract(v) { this.x -= v.x; this.y -= v.y; return this; }
+  subtractNew(v) { return this.clone().subtract(v); }
+  get lengthSquared() { return this.x * this.x + this.y * this.y; }
+  get length() { return Math.hypot(this.x, this.y); }
+  get angle() { return Math.atan2(this.y, this.x); }
 }
 
 class Particle {
-  constructor({ x, y, pinned, id, char, accent } = {}) {
+  constructor({ x, y, pinned, char }) {
     this.pos = new Vec2(x, y);
     this.oldPos = new Vec2(x, y);
-    this.velocity = new Vec2();
-    this.acceleration = new Vec2();
+    this.acc = new Vec2();
     this.pinned = pinned;
-    this.id = id;
     this.char = char;
-    this.accent = accent;
-    this.gravityVec = new Vec2();
+    this.downConstraint = null;
   }
+
+  applyForce(v) { this.acc.add(v); }
 
   update(delta) {
     if (this.pinned) {
-      this.acceleration.zero();
+      this.acc.zero();
       return;
     }
 
-    this.velocity.reset(
-      (this.pos.x - this.oldPos.x) * CONFIG.damping,
-      (this.pos.y - this.oldPos.y) * CONFIG.damping
-    );
+    const vx = (this.pos.x - this.oldPos.x) * CONFIG.damping;
+    const vy = (this.pos.y - this.oldPos.y) * CONFIG.damping;
+    this.oldPos.reset(this.pos.x, this.pos.y);
 
-    this.oldPos.reset(...this.pos);
-
-    const dd = Math.max(delta ** 2, 1);
-    this.gravityVec.reset(0, CONFIG.gravity / dd);
-    this.applyForce(this.gravityVec);
-
-    this.pos.x += this.velocity.x + this.acceleration.x * dd;
-    this.pos.y += this.velocity.y + this.acceleration.y * dd;
-    this.acceleration.reset();
-  }
-
-  applyForce(v) {
-    this.acceleration.add(v);
+    const dd = Math.max(1, delta * delta);
+    this.applyForce(new Vec2(0, CONFIG.gravity / dd));
+    this.pos.x += vx + this.acc.x * dd;
+    this.pos.y += vy + this.acc.y * dd;
+    this.acc.zero();
   }
 }
 
 class Constraint {
-  constructor({ p1, p2, length, compressFactor, stretchFactor, isSpacer }) {
+  constructor(p1, p2, length, compressFactor, stretchFactor) {
     this.p1 = p1;
     this.p2 = p2;
     this.length = length;
-    this.isSpacer = isSpacer;
-    this.minLength = length * compressFactor;
-    this.maxLength = length * stretchFactor;
+    this.min = length * compressFactor;
+    this.max = length * stretchFactor;
   }
 
   solve() {
     const dx = this.p2.pos.x - this.p1.pos.x;
     const dy = this.p2.pos.y - this.p1.pos.y;
-    const distance = Math.hypot(dx, dy);
+    const dist = Math.hypot(dx, dy);
+    if (!dist) return;
 
-    if (distance === 0) return;
-
-    let targetLength = this.length;
-
-    if (distance < this.minLength) targetLength = this.minLength;
-    else if (distance > this.maxLength) targetLength = this.maxLength;
+    let target = this.length;
+    if (dist < this.min) target = this.min;
+    else if (dist > this.max) target = this.max;
     else return;
 
-    const difference = targetLength - distance;
-    const percent = difference / distance / 2;
-    const offsetX = dx * percent;
-    const offsetY = dy * percent;
+    const percent = (target - dist) / dist / 2;
+    const ox = dx * percent;
+    const oy = dy * percent;
 
     if (!this.p1.pinned) {
-      this.p1.pos.x -= offsetX;
-      this.p1.pos.y -= offsetY;
+      this.p1.pos.x -= ox;
+      this.p1.pos.y -= oy;
     }
-
     if (!this.p2.pinned) {
-      this.p2.pos.x += offsetX;
-      this.p2.pos.y += offsetY;
+      this.p2.pos.x += ox;
+      this.p2.pos.y += oy;
     }
   }
 }
 
-if (document.fonts?.ready) {
-  document.fonts.ready.then(() => main());
-} else {
-  setTimeout(() => main(), 500);
-}
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(main, 150);
+});
+
+setTimeout(main, 300);
